@@ -1,0 +1,12 @@
+{
+  "name": "pdf-text-extractor",
+  "version": "1.0.0",
+  "description": "Extracts text from a pdf file",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT"
+}
