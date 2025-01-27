@@ -1,6 +1,6 @@
 {
   "name": "pdf-text-extractor",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Extracts text from a pdf file",
   "type": "module",
   "main": "index.js",
