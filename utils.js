@@ -33,11 +33,20 @@ export function getXrefTable(fileName, startxref) {
         if (foo.includes(new Buffer.from("trailer"))) {
           break;
         }
-        result.push({
-          start: foo.slice(0, 10),
-          gen: foo.slice(11, 16),
-          sts: foo[17] || null,
-        });
+
+        if (data.slice(0, 4).includes(new Buffer.from("xref"))) {
+          result.push({
+            start: foo.slice(0, 10),
+            gen: foo.slice(11, 16),
+            sts: foo[17] || null,
+          });
+        } else {
+          result.push(foo);
+          if (foo.includes(new Buffer.from("endobj"))) {
+            break;
+          }
+        }
+
         lastPos = curPos;
         curPos = 1 + data.indexOf(0x0a, curPos);
       }
