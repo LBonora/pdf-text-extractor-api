@@ -5,8 +5,14 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
+    "dev": "node index.js",
+    "lint:prettier:check": "prettier --check .",
+    "lint:prettier:fix": "prettier --write .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "prettier": "^3.4.2"
+  }
 }
