@@ -3,6 +3,7 @@ import zlib from "node:zlib";
 import { Buffer } from "node:buffer";
 
 import parsePdfDict from "./parser.js";
+import { start } from "node:repl";
 
 //open file
 export function readObj(
@@ -63,37 +64,75 @@ export async function getXrefTable(filename, { tailSize = 64 } = {}) {
   const xrefIndex = tail.indexOf("startxref") + 9;
   const startxref = parseInt(tail.subarray(xrefIndex));
 
-  const { content: head } = await readObj(filename, {
-    start: startxref,
-    end: startxref + 4,
-  });
+  const { content, stream } = await readObj(filename, { start: startxref });
+  const objDict = parsePdfDict(content);
 
-  let temp;
-  if (head.includes("xref")) {
-    console.log("WIP: tipo normal", head.toString());
+  const response = {
+    xreftable: null,
+    objRef: null,
+    startxref,
+    objDict,
+    root: null,
+  };
+
+  if (content.subarray(0, 15).includes("xref")) {
+    console.log("TIPO CLASSICO");
   } else {
-    temp = await handleObjXrefTable(filename, startxref);
+    console.log("TIPO XREF OBJ");
+    response.objRef = content.subarray(0, content.indexOf("\n"));
+    const decodedStream = objDict.Filter ? await decodeStream(stream) : stream;
+    response.xreftable = handleObjXrefTable(response.objDict, decodedStream);
   }
 
-  return {
-    xref: "wip",
-    root: "wip",
-    startxref,
-    temp,
-  };
+  return response;
 }
 
-async function handleObjXrefTable(filename, startxref) {
-  const { content, stream } = await readObj(filename, { start: startxref });
-  const index = content.indexOf("\n");
-  const endstream = content.indexOf("endstream");
-  const objRef = content.subarray(0, index);
-  console.log("TIPO OBJ");
-  console.log("PROTO CONTENT\nXREF CONTENT\n");
-  parsePdfDict(content.subarray(index + 1, endstream));
-  console.log("END PROTO CONTENT");
-  return { content, stream, objRef };
+function arrayfy(string) {
+  return string
+    .slice(1, -1)
+    .split(" ")
+    .map((x) => parseInt(x));
 }
+
+//special cases (e.g. W size != 3) not implemented
+function handleObjXrefTable(objDict, stream) {
+  const response = {};
+  const [first, size] = arrayfy(objDict.Index);
+  const w = arrayfy(objDict.W);
+  const n = w.reduce((a, b) => a + b);
+  console.log(first, size, w);
+  const rework = [];
+  for (let i = first; i < size; i++) {
+    let key = i.toString() + " ";
+    const args = { offset: null, type: "f", indirect: null, subindex: null };
+    const typ = stream.readUIntBE(n * i, w[0]);
+    const offset = stream.readUIntBE(n * i + w[0], w[1]);
+    const gen = stream.readUIntBE(n * i + w[0] + w[1], w[2]);
+
+    if (typ == 2) {
+      key += "0 R";
+      rework.push(key);
+      args.type = "i";
+      args.indirect = offset.toString() + " 0 R";
+      args.subindex = gen;
+    } else if (0 <= typ < 2) {
+      key += gen.toString() + " R";
+      args.type = ["f", "n"][typ];
+      args.offset = offset;
+    }
+    response[key] = args;
+
+    const info = stream.subarray(n * i, n * (i + 1));
+  }
+
+  for (const item of rework) {
+    const indirect = response[item].indirect;
+    response[item].offset = response[indirect].offset;
+  }
+
+  return response;
+}
+
 //inflate FlateDecode
 export function decodeStream(stream) {
   return new Promise((resolve, reject) => {
@@ -104,4 +143,8 @@ export function decodeStream(stream) {
       resolve(result);
     });
   });
+}
+
+async function handleClassicXrefTable(filename, startxref) {
+  const { content, stream } = await readObj(filename, { start: startxref });
 }
