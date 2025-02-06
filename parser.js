@@ -16,16 +16,15 @@ const flags = {
 };
 
 export default function parsePdfDict(rawObject) {
-  rawObject = rawObject.subarray(2, -3); //gambiarra. Breaks dict handling
-  console.log("\n\nPARSER\n");
-  console.log(rawObject.toString());
+  const start = rawObject.indexOf("<<");
+  const end = rawObject.lastIndexOf(">>");
+  rawObject = rawObject.subarray(start + 2, end); //gambiarra. Breaks dict handling
 
   for (let chr of rawObject) {
     chr == 0x2f && flags.name && flagHandler("name"); //0x2f == /
     chr == 0x2f && flags.space && flagHandler("name");
-    //chr == 0x2f && nameHandler(); //0x2f == /
 
-    (chr == 0x0a || chr == 0x20) && spaceHandler(); //0x0a,0x20 == \n <spc>
+    (chr == 0x0a || chr == 0x20) && spaceHandler(); //0x0a,0x20 == \n, <spc>
 
     chr == 0x2f && (flags.name = true); //0x2f == /
 
@@ -39,10 +38,7 @@ export default function parsePdfDict(rawObject) {
     chr == 0x3e && flagHandler("hexstr"); //0x3e == >
     chr == 0x28 && flagHandler("rawstr"); //0x28 == )
   }
-
-  console.log("\nPARSER RESULT");
-  console.log(result);
-  console.log("\nEND PARSER\n\n");
+  return result;
 }
 
 function flagHandler(flag) {
@@ -68,6 +64,24 @@ function spaceHandler() {
   }
 }
 
+function stringfy(content) {
+  return Buffer.from(content).toString().trim();
+}
+
+function saveResult() {
+  if (objKey) {
+    result[objKey] = stringfy(content); //string just for debugging
+    objKey = null;
+  } else {
+    if (!flags.name) {
+      console.error("objKey should be /name type");
+      throw new Error();
+    }
+    objKey = stringfy(content).slice(1); //objKey must be string!
+  }
+  content = [];
+}
+
 //keeping individual handlers for debugging
 //this function will fail with arrays inside arrays
 function arrayHandler() {
@@ -83,22 +97,4 @@ function nameHandler() {
 function hexstrHandler() {
   !flags.array && saveResult(); //content inside an array shall not be discarded yet
   flags.hexstr = false;
-}
-
-function stringfy(content) {
-  return Buffer.from(content).toString().trim();
-}
-
-function saveResult() {
-  if (objKey) {
-    result[objKey] = stringfy(content); //string just for debugging
-    objKey = null;
-  } else {
-    if (!flags.name) {
-      console.error("objKey should be /name type");
-      throw new Error();
-    }
-    objKey = stringfy(content); //objKey must be string!
-  }
-  content = [];
 }
