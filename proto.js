@@ -3,7 +3,6 @@ import zlib from "node:zlib";
 import { Buffer } from "node:buffer";
 
 import parsePdfDict from "./parser.js";
-import { start } from "node:repl";
 
 //open file
 export function readObj(
@@ -54,7 +53,7 @@ export function readObj(
   });
 }
 
-//get startxref
+//get xref table
 export async function getXrefTable(filename, { tailSize = 64 } = {}) {
   const filesize = fs.statSync(filename).size;
   const { content: tail } = await readObj(filename, {
@@ -65,33 +64,35 @@ export async function getXrefTable(filename, { tailSize = 64 } = {}) {
   const startxref = parseInt(tail.subarray(xrefIndex));
 
   const { content, stream } = await readObj(filename, { start: startxref });
-  const objDict = parsePdfDict(content);
 
   const response = {
     xreftable: null,
     objRef: null,
     startxref,
-    objDict,
+    objDict: null,
     root: null,
   };
 
   if (content.subarray(0, 15).includes("xref")) {
     console.log("TIPO CLASSICO");
+    response.xreftable = handleClassicXrefTable(content);
   } else {
+    response.objDict = parsePdfDict(content);
     console.log("TIPO XREF OBJ");
     response.objRef = content.subarray(0, content.indexOf("\n"));
-    const decodedStream = objDict.Filter ? await decodeStream(stream) : stream;
+    const decodedStream = response.objDict.Filter
+      ? await decodeStream(stream)
+      : stream;
     response.xreftable = handleObjXrefTable(response.objDict, decodedStream);
   }
-
   return response;
 }
 
-function arrayfy(string) {
-  return string
-    .slice(1, -1)
-    .split(" ")
-    .map((x) => parseInt(x));
+function handleClassicXrefTable(content) {
+  const response = {};
+  console.log(content.toString());
+  parsePdfDict(content);
+  return response;
 }
 
 //special cases (e.g. W size != 3) not implemented
@@ -100,7 +101,6 @@ function handleObjXrefTable(objDict, stream) {
   const [first, size] = arrayfy(objDict.Index);
   const w = arrayfy(objDict.W);
   const n = w.reduce((a, b) => a + b);
-  console.log(first, size, w);
   const rework = [];
   for (let i = first; i < size; i++) {
     let key = i.toString() + " ";
@@ -145,6 +145,9 @@ export function decodeStream(stream) {
   });
 }
 
-async function handleClassicXrefTable(filename, startxref) {
-  const { content, stream } = await readObj(filename, { start: startxref });
+function arrayfy(string) {
+  return string
+    .slice(1, -1)
+    .split(" ")
+    .map((x) => parseInt(x));
 }

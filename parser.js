@@ -1,100 +1,113 @@
-/********************************************************************* /
-/ still VERY buggy version, but gives what is needed for now          /
-/ for now it parses Xref streams, with bug in indirect object entries /
-/*********************************************************************/
 const result = {};
 let content = []; //keeps content info
 let objKey = null; //kepps key values of result
 
 //flow controll of special cases
 const flags = {
-  name: false,
-  space: false,
-  array: false,
-  rawstr: false,
-  hexstr: false,
+  comment: false, //%.../r/n
+  rawstr: false, // (...)
+  name: false, // /.../s
+  hexstr: false, // <...>
+  array: false, // [...]
+};
+
+const whiteSpaces = {
+  0x00: "null", //NUL
+  0x09: "tab", //HT
+  0x0a: "eol", //LF
+  0x0c: "formfeed", //FF
+  0x0d: "eol", //CR
+  0x20: "space", //SP
+};
+
+const delimiters = {
+  open: {
+    0x25: "comment", // %
+    0x28: "rawstr", //  (
+    0x2f: "name", //    /
+    0x3c: "hexstr", //  <
+    0x5b: "array", //   [
+    0x7b: "???", //     {
+  },
+  close: {
+    0x29: "rawstr", //  )
+    0x3e: "hexstr", //  >
+    0x5d: "array", //   ]
+    0x7d: "???", //     }
+  },
 };
 
 export default function parsePdfDict(rawObject) {
   const start = rawObject.indexOf("<<");
   const end = rawObject.lastIndexOf(">>");
   rawObject = rawObject.subarray(start + 2, end); //gambiarra. Breaks dict handling
+  /*console.log("\n--- START ---");
+  console.log(stringfy(rawObject));
+  console.log("-------------\n\n");*/
 
   for (let chr of rawObject) {
-    chr == 0x2f && flags.name && flagHandler("name"); //0x2f == /
-    chr == 0x2f && flags.space && flagHandler("name");
+    if (flags.comment) {
+      if (whiteSpaces[chr] == "eol") {
+        flags.comment = false;
+        content = [];
+      } else {
+        continue;
+      }
+    }
 
-    (chr == 0x0a || chr == 0x20) && spaceHandler(); //0x0a,0x20 == \n, <spc>
-
-    chr == 0x2f && (flags.name = true); //0x2f == /
-
-    chr == 0x5b && (flags.array = true); //0x5b == [
-    chr == 0x3c && (flags.hexstr = true); //0x3c == <
-    chr == 0x28 && (flags.rawstr = true); //0x28 == (
-
-    content.push(chr);
-
-    chr == 0x5d && flagHandler("array"); //0x5d == ]
-    chr == 0x3e && flagHandler("hexstr"); //0x3e == >
-    chr == 0x28 && flagHandler("rawstr"); //0x28 == )
+    if (Object.keys(delimiters.open).includes(chr.toString())) {
+      const delimiter = delimiters.open[chr];
+      !flags.array && saveContent(); //ignore content saving if array
+      content.push(chr);
+      flags[delimiter] = true;
+    } else if (Object.keys(delimiters.close).includes(chr.toString())) {
+      const delimiter = delimiters.close[chr];
+      content.push(chr);
+      !flags.array && saveContent(); //ignore content saving if array
+      flags[delimiter] = false;
+    } else if (Object.keys(whiteSpaces).includes(chr.toString())) {
+      if (flags.name) {
+        saveContent();
+        flags.name = false;
+      }
+      if (content.length) {
+        if (![0x20].includes(content[content.length - 1])) {
+          content.push(0x20);
+        }
+      }
+    } else {
+      content.push(chr);
+    }
   }
+  saveContent();
+
+  console.log("\n--------------");
+  console.log(stringfy(rawObject));
+  console.log("\n--- RESULT ---");
+  console.log(result);
+  console.log("--------------\n\n\n");
   return result;
-}
-
-function flagHandler(flag) {
-  !flags.array && !(flag == "array") && saveResult();
-  flags[flag] = false;
-}
-
-function spaceHandler() {
-  //ignoring space only content
-  if (!stringfy(content)) {
-    content = [];
-    return;
-  }
-
-  if (flags.name) {
-    saveResult();
-    flags.space = false;
-    flags.name = false;
-  } else if (!flags.array) {
-    flags.space = true;
-    //we are ignoring spaces inside arrays
-    //we should not find spaces inside pdf strings (raw or hex)
-  }
 }
 
 function stringfy(content) {
   return Buffer.from(content).toString().trim();
 }
 
-function saveResult() {
+function saveContent() {
+  if (!content.length) {
+    return;
+  }
+  //console.log("SAVING:", stringfy(content));
   if (objKey) {
     result[objKey] = stringfy(content); //string just for debugging
     objKey = null;
   } else {
     if (!flags.name) {
       console.error("objKey should be /name type");
+      console.error("content:", stringfy(content));
       throw new Error();
     }
     objKey = stringfy(content).slice(1); //objKey must be string!
   }
   content = [];
-}
-
-//keeping individual handlers for debugging
-//this function will fail with arrays inside arrays
-function arrayHandler() {
-  saveResult();
-  flags.array = false;
-}
-
-function nameHandler() {
-  saveResult();
-  flags.name = false;
-}
-
-function hexstrHandler() {
-  !flags.array && saveResult(); //content inside an array shall not be discarded yet
-  flags.hexstr = false;
 }
