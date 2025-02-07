@@ -38,6 +38,8 @@ const delimiters = {
 
 export default function parsePdfDict(rawObject) {
   const result = {};
+  content = [];
+  objKey = null;
   const start = rawObject.indexOf("<<");
   const end = rawObject.lastIndexOf(">>");
   rawObject = rawObject.subarray(start + 2, end); //gambiarra. Breaks dict handling
@@ -109,7 +111,7 @@ function saveContent(result) {
     if (!flags.name) {
       console.error("objKey should be /name type");
       console.error("content:", stringfy(content));
-      throw new Error();
+      //throw new Error();
     }
     objKey = stringfy(content).slice(1); //objKey must be string!
   }
