@@ -1,4 +1,3 @@
-const result = {};
 let content = []; //keeps content info
 let objKey = null; //kepps key values of result
 
@@ -38,6 +37,9 @@ const delimiters = {
 };
 
 export default function parsePdfDict(rawObject) {
+  const result = {};
+  content = [];
+  objKey = null;
   const start = rawObject.indexOf("<<");
   const end = rawObject.lastIndexOf(">>");
   rawObject = rawObject.subarray(start + 2, end); //gambiarra. Breaks dict handling
@@ -57,17 +59,21 @@ export default function parsePdfDict(rawObject) {
 
     if (Object.keys(delimiters.open).includes(chr.toString())) {
       const delimiter = delimiters.open[chr];
-      !flags.array && saveContent(); //ignore content saving if array
+      if (flags.name) {
+        saveContent(result);
+        flags.name = false;
+      }
+      !flags.array && saveContent(result); //ignore content saving if array
       content.push(chr);
       flags[delimiter] = true;
     } else if (Object.keys(delimiters.close).includes(chr.toString())) {
       const delimiter = delimiters.close[chr];
       content.push(chr);
-      !flags.array && saveContent(); //ignore content saving if array
+      !flags.array && saveContent(result); //ignore content saving if array
       flags[delimiter] = false;
     } else if (Object.keys(whiteSpaces).includes(chr.toString())) {
       if (flags.name) {
-        saveContent();
+        saveContent(result);
         flags.name = false;
       }
       if (content.length) {
@@ -79,7 +85,7 @@ export default function parsePdfDict(rawObject) {
       content.push(chr);
     }
   }
-  saveContent();
+  saveContent(result);
 
   console.log("\n--------------");
   console.log(stringfy(rawObject));
@@ -93,7 +99,7 @@ function stringfy(content) {
   return Buffer.from(content).toString().trim();
 }
 
-function saveContent() {
+function saveContent(result) {
   if (!content.length) {
     return;
   }
@@ -105,7 +111,7 @@ function saveContent() {
     if (!flags.name) {
       console.error("objKey should be /name type");
       console.error("content:", stringfy(content));
-      throw new Error();
+      //throw new Error();
     }
     objKey = stringfy(content).slice(1); //objKey must be string!
   }
