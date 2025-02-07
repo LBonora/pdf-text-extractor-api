@@ -64,34 +64,45 @@ export async function getXrefTable(filename, { tailSize = 64 } = {}) {
   const startxref = parseInt(tail.subarray(xrefIndex));
 
   const { content, stream } = await readObj(filename, { start: startxref });
+  const trailer = parsePdfDict(content);
 
   const response = {
-    xreftable: null,
-    objRef: null,
     startxref,
-    objDict: null,
-    root: null,
+    trailer,
   };
 
   if (content.subarray(0, 15).includes("xref")) {
     console.log("TIPO CLASSICO");
-    response.xreftable = handleClassicXrefTable(content);
+    response.table = handleClassicXrefTable(content);
   } else {
-    response.objDict = parsePdfDict(content);
     console.log("TIPO XREF OBJ");
     response.objRef = content.subarray(0, content.indexOf("\n"));
-    const decodedStream = response.objDict.Filter
-      ? await decodeStream(stream)
-      : stream;
-    response.xreftable = handleObjXrefTable(response.objDict, decodedStream);
+    const decodedStream = trailer.Filter ? await decodeStream(stream) : stream;
+    response.table = handleObjXrefTable(trailer, decodedStream);
   }
+  console.log("\n----\n", response);
   return response;
 }
 
 function handleClassicXrefTable(content) {
   const response = {};
   console.log(content.toString());
-  parsePdfDict(content);
+  let lst = 1 + content.indexOf(0x0a);
+  let cur = content.indexOf(0x0a, lst);
+  const [start, end] = content.subarray(lst, cur).toString().split(" ");
+
+  for (let i = start; i < end; i++) {
+    lst = cur + 1;
+    cur = content.indexOf(0x0a, lst);
+    const [offset, gen, type] = content
+      .subarray(lst, cur)
+      .toString()
+      .split(" ");
+    const key = i.toString() + " " + parseInt(gen).toString() + " R";
+    const value = { offset: parseInt(offset), type };
+    response[key] = value;
+    //console.log(key, value, offset, gen, type);
+  }
   return response;
 }
 
@@ -104,7 +115,8 @@ function handleObjXrefTable(objDict, stream) {
   const rework = [];
   for (let i = first; i < size; i++) {
     let key = i.toString() + " ";
-    const args = { offset: null, type: "f", indirect: null, subindex: null };
+    //const args = { offset: null, type: "f", indirect: null, subindex: null };
+    const args = {};
     const typ = stream.readUIntBE(n * i, w[0]);
     const offset = stream.readUIntBE(n * i + w[0], w[1]);
     const gen = stream.readUIntBE(n * i + w[0] + w[1], w[2]);
@@ -138,6 +150,7 @@ export function decodeStream(stream) {
   return new Promise((resolve, reject) => {
     zlib.inflate(stream, (error, result) => {
       if (error) {
+        console.log("ENTREI", stream.toString());
         reject(error);
       }
       resolve(result);
